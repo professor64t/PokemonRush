@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Pokemon Rush</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Segoe UI',system-ui,sans-serif;}
+canvas{display:block;width:100%;height:100%;touch-action:none;}
+#ui{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:16px;color:#fff;font-weight:700;}
+#score{background:rgba(0,0,0,.45);padding:8px 22px;border-radius:30px;font-size:clamp(16px,5vw,26px);align-self:center;border:2px solid rgba(255,255,255,.3);}
+#score span{color:#ffe484;margin-left:6px;}
+#selector{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;pointer-events:auto;}
+.btn{background:rgba(20,30,45,.85);border:2px solid rgba(255,255,255,.5);border-radius:30px;padding:8px 14px;color:#fff;font-size:clamp(12px,3.5vw,18px);font-weight:700;cursor:pointer;transition:.1s;}
+.btn.active{background:#3a5a8a;border-color:#ffd966;transform:translateY(2px);}
+#gameover{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.75);pointer-events:auto;}
+#gameover.show{display:flex;}
+#gameover h1{font-size:clamp(28px,10vw,60px);margin-bottom:20px;color:#fff;text-shadow:0 6px 0 #7a1f1f;}
+#restart{background:#e34f4f;border:none;border-radius:40px;padding:14px 40px;color:#fff;font-size:clamp(18px,5vw,28px);font-weight:800;box-shadow:0 6px 0 #7a1f1f;cursor:pointer;}
+#restart:active{transform:translateY(4px);box-shadow:0 2px 0 #7a1f1f;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="score">ОЧКИ <span id="sv">0</span></div>
+  <div id="selector">
+    <button class="btn active" data-p="pikachu">⚡ Пикачу</button>
+    <button class="btn" data-p="bulbasaur">🌿 Бульбазавр</button>
+    <button class="btn" data-p="charmander">🔥 Чармандер</button>
+    <button class="btn" data-p="squirtle">💧 Сквиртл</button>
+  </div>
+</div>
+<div id="gameover">
+  <h1>ИГРА ОКОНЧЕНА</h1>
+  <button id="restart">ЗАНОВО</button>
+</div>
+
+<script>
+(function(){
+'use strict';
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const sv=document.getElementById('sv');
+const gameoverEl=document.getElementById('gameover');
+const selector=document.getElementById('selector');
+
+let W=0,H=0;
+let gameActive=true;
+let score=0;
+let baseSpeed=6;
+let currentPoke='pikachu';
+
+const player={x:0,y:0,w:60,h:60,vy:0,onGround:true,groundY:0};
+const GRAVITY=0.9;
+const JUMP=-16;
+
+let obstacles=[];
+let spawnTimer=60;
+let groundOffset=0;
+
+function resize(){
+  W=window.innerWidth;
+  H=window.innerHeight;
+  canvas.width=W;
+  canvas.height=H;
+  player.groundY=H*0.82;
+  player.x=W*0.2;
+  player.y=player.groundY-player.h;
+}
+window.addEventListener('resize',resize);
+resize();
+
+// ===== ПИКАЧУ =====
+function drawPikachu(cx,cy,s){
+  ctx.save();ctx.translate(cx,cy);ctx.scale(s,s);
+  // хвост
+  ctx.beginPath();
+  ctx.moveTo(18,6);ctx.lineTo(38,-14);ctx.lineTo(28,-4);
+  ctx.lineTo(48,-22);ctx.lineTo(30,-2);ctx.lineTo(44,-16);
+  ctx.lineTo(22,4);ctx.closePath();
+  ctx.fillStyle='#f8d030';ctx.fill();
+  ctx.strokeStyle='#a07000';ctx.lineWidth=1.5;ctx.stroke();
+  // тело
+  ctx.beginPath();ctx.ellipse(0,10,22,20,0,0,Math.PI*2);
+  ctx.fillStyle='#f8d030';ctx.fill();
+  ctx.strokeStyle='#a07000';ctx.lineWidth=1.8;ctx.stroke();
+  // голова
+  ctx.beginPath();ctx.ellipse(0,-12,18,17,0,0,Math.PI*2);
+  ctx.fillStyle='#f8d030';ctx.fill();ctx.stroke();
+  // уши
+  ctx.beginPath();ctx.moveTo(-10,-22);ctx.lineTo(-22,-46);ctx.lineTo(-4,-30);ctx.closePath();
+  ctx.fillStyle='#f8d030';ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(-20,-42);ctx.lineTo(-22,-46);ctx.lineTo(-14,-42);ctx.closePath();
+  ctx.fillStyle='#222';ctx.fill();
+  ctx.beginPath();ctx.moveTo(10,-22);ctx.lineTo(22,-46);ctx.lineTo(4,-30);ctx.closePath();
+  ctx.fillStyle='#f8d030';ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(20,-42);ctx.lineTo(22,-46);ctx.lineTo(14,-42);ctx.closePath();
+  ctx.fillStyle='#222';ctx.fill();
+  // глаза
+  ctx.beginPath();ctx.arc(-7,-16,3.2,0,Math.PI*2);ctx.fillStyle='#111';ctx.fill();
+  ctx.beginPath();ctx.arc(7,-16,3.2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-8,-17,1.2,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(6,-17,1.2,0,Math.PI*2);ctx.fill();
+  // румянец
+  ctx.globalAlpha=0.6;ctx.fillStyle='#f08050';
+  ctx.beginPath();ctx.arc(-12,-6,5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(12,-6,5,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=1;
+  // нос
+  ctx.beginPath();ctx.arc(0,-10,1.5,0,Math.PI*2);ctx.fillStyle='#111';ctx.fill();
+  // рот
+  ctx.beginPath();ctx.strokeStyle='#111';ctx.lineWidth=1.5;
+  ctx.arc(0,-4,5,0.1,Math.PI-0.1);ctx.stroke();
+  ctx.restore();
+}
+
+// ===== БУЛЬБАЗАВР =====
+function drawBulbasaur(cx,cy,s){
+  ctx.save();ctx.translate(cx,cy);ctx.scale(s,s);
+  // луковица
+  ctx.beginPath();ctx.ellipse(0,22,18,14,0,0,Math.PI*2);
+  ctx.fillStyle='#5a9e4e';ctx.fill();
+  ctx.strokeStyle='#2d5e1e';ctx.lineWidth=1.8;ctx.stroke();
+  // листья
+  ctx.beginPath();ctx.moveTo(-8,20);ctx.lineTo(-22,6);ctx.lineTo(-4,14);ctx.closePath();
+  ctx.fillStyle='#4caf50';ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(8,20);ctx.lineTo(22,6);ctx.lineTo(4,14);ctx.closePath();
+  ctx.fillStyle='#4caf50';ctx.fill();ctx.stroke();
+  // тело
+  ctx.beginPath();ctx.ellipse(0,10,24,22,0,0,Math.PI*2);
+  ctx.fillStyle='#78C850';ctx.fill();
+  ctx.strokeStyle='#3a6b2a';ctx.lineWidth=1.8;ctx.stroke();
+  // голова
+  ctx.beginPath();ctx.ellipse(0,-12,20,18,0,0,Math.PI*2);
+  ctx.fillStyle='#78C850';ctx.fill();ctx.stroke();
+  // уши
+  ctx.beginPath();ctx.ellipse(-12,-28,6,10,-0.3,0,Math.PI*2);
+  ctx.fillStyle='#78C850';ctx.fill();ctx.stroke();
+  ctx.beginPath();ctx.ellipse(12,-28,6,10,0.3,0,Math.PI*2);
+  ctx.fillStyle='#78C850';ctx.fill();ctx.stroke();
+  // глаза
+  ctx.beginPath();ctx.arc(-9,-16,4.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(9,-16,4.5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-10,-17,2.5,0,Math.PI*2);ctx.fillStyle='#c03028';ctx.fill();
+  ctx.beginPath();ctx.arc(8,-17,2.5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-10.5,-18,1,0,Math.PI*2);ctx.fillStyle='#111';ctx.fill();
+  ctx.beginPath();ctx.arc(7.5,-18,1,0,Math.PI*2);ctx.fill();
+  // рот
+  ctx.beginPath();ctx.strokeStyle='#2d4a1e';ctx.lineWidth=2;
+  ctx.arc(0,-6,6,0.2,Math.PI-0.2);ctx.stroke();
+  ctx.restore();
+}
+
+// ===== ЧАРМАНДЕР =====
+function drawCharmander(cx,cy,s){
+  ctx.save();ctx.translate(cx,cy);ctx.scale(s,s);
+  // хвост с пламенем
+  ctx.beginPath();
+  ctx.moveTo(18,6);ctx.quadraticCurveTo(40,-6,46,-20);
+  ctx.quadraticCurveTo(52,-10,40,4);
+  ctx.quadraticCurveTo(30,12,18,6);ctx.closePath();
+  ctx.fillStyle='#F08030';ctx.fill();
+  ctx.strokeStyle='#b85e1a';ctx.lineWidth=1.5;ctx.stroke();
+  // пламя
+  ctx.beginPath();
+  ctx.moveTo(46,-20);ctx.quadraticCurveTo(58,-34,50,-46);
+  ctx.quadraticCurveTo(62,-36,56,-22);
+  ctx.quadraticCurveTo(54,-12,46,-20);ctx.closePath();
+  ctx.fillStyle='#ff5500';ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(48,-26);ctx.quadraticCurveTo(56,-36,50,-42);
+  ctx.quadraticCurveTo(60,-34,54,-26);ctx.closePath();
+  ctx.fillStyle='#ffcc00';ctx.fill();
+  // тело
+  ctx.beginPath();ctx.ellipse(0,10,22,20,0,0,Math.PI*2);
+  ctx.fillStyle='#F08030';ctx.fill();
+  ctx.strokeStyle='#b85e1a';ctx.lineWidth=1.8;ctx.stroke();
+  // брюшко
+  ctx.globalAlpha=0.6;ctx.beginPath();ctx.ellipse(0,14,12,10,0,0,Math.PI*2);
+  ctx.fillStyle='#f5c78e';ctx.fill();ctx.globalAlpha=1;
+  // голова
+  ctx.beginPath();ctx.ellipse(0,-12,18,17,0,0,Math.PI*2);
+  ctx.fillStyle='#F08030';ctx.fill();ctx.stroke();
+  // глаза
+  ctx.beginPath();ctx.arc(-8,-16,4.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(8,-16,4.5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-9,-17,2.5,0,Math.PI*2);ctx.fillStyle='#111';ctx.fill();
+  ctx.beginPath();ctx.arc(7,-17,2.5,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-9.8,-18.2,1,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(6.2,-18.2,1,0,Math.PI*2);ctx.fill();
+  // рот
+  ctx.beginPath();ctx.strokeStyle='#8b3a0e';ctx.lineWidth=2;
+  ctx.arc(0,-6,5,0.3,Math.PI-0.3);ctx.stroke();
+  ctx.restore();
+}
+
+// ===== СКВИРТЛ =====
+function drawSquirtle(cx,cy,s){
+  ctx.save();ctx.translate(cx,cy);ctx.scale(s,s);
+  // хвост
+  ctx.beginPath();
+  ctx.moveTo(20,14);ctx.quadraticCurveTo(38,4,34,-8);
+  ctx.quadraticCurveTo(28,2,20,8);ctx.closePath();
+  ctx.fillStyle='#78C8F0';ctx.fill();
+  ctx.strokeStyle='#3a7a9a';ctx.lineWidth=1.5;ctx.stroke();
+  // панцирь
+  ctx.beginPath();ctx.ellipse(0,10,24,20,0,0,Math.PI*2);
+  ctx.fillStyle='#B8A050';ctx.fill();
+  ctx.strokeStyle='#7a5e2e';ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.ellipse(0,10,16,12,0,0,Math.PI*2);
+  ctx.fillStyle='#d8c080';ctx.fill();
+  ctx.strokeStyle='#7a5e2e';ctx.lineWidth=1.5;ctx.stroke();
+  // лапки
+  ctx.beginPath();ctx.ellipse(-12,26,6,4,0,0,Math.PI*2);
+  ctx.fillStyle='#78C8F0';ctx.fill();
+  ctx.strokeStyle='#3a7a9a';ctx.stroke();
+  ctx.beginPath();ctx.ellipse(12,26,6,4,0,0,Math.PI*2);
+  ctx.fillStyle='#78C8F0';ctx.fill();ctx.stroke();
+  // голова
+  ctx.beginPath();ctx.ellipse(0,-14,18,16,0,0,Math.PI*2);
+  ctx.fillStyle='#78C8F0';ctx.fill();
+  ctx.strokeStyle='#3a7a9a';ctx.lineWidth=1.8;ctx.stroke();
+  // глаза
+  ctx.beginPath();ctx.arc(-7,-18,4,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(7,-18,4,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-8,-19,2.2,0,Math.PI*2);ctx.fillStyle='#111';ctx.fill();
+  ctx.beginPath();ctx.arc(6,-19,2.2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-8.8,-20.2,1,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  ctx.beginPath();ctx.arc(5.2,-20.2,1,0,Math.PI*2);ctx.fill();
+  // рот
+  ctx.beginPath();ctx.strokeStyle='#2a4a5a';ctx.lineWidth=2;
+  ctx.arc(0,-8,5,0.2,Math.PI-0.2);ctx.stroke();
+  ctx.restore();
+}
+
+function drawPokemon(cx,cy,s){
+  switch(currentPoke){
+    case 'pikachu':drawPikachu(cx,cy,s);break;
+    case 'bulbasaur':drawBulbasaur(cx,cy,s);break;
+    case 'charmander':drawCharmander(cx,cy,s);break;
+    case 'squirtle':drawSquirtle(cx,cy,s);break;
+  }
+}
+
+// ===== ПРЕПЯТСТВИЯ =====
+function spawnObstacle(){
+  const t=Math.random();
+  let w,h,y;
+  if(t<0.5){
+    w=30+Math.random()*20;h=50+Math.random()*40;
+    y=player.groundY-h;
+  }else if(t<0.8){
+    w=40+Math.random()*25;h=60+Math.random()*40;
+    y=player.groundY-h;
+  }else{
+    w=45+Math.random()*25;h=40+Math.random()*20;
+    y=player.groundY-h-90-Math.random()*40;
+  }
+  obstacles.push({x:W+50,y:y,w:w,h:h,type:t});
+}
+function drawObstacles(){
+  for(const o of obstacles){
+    if(o.type<0.8){
+      // кактус
+      ctx.fillStyle='#2d5a2d';
+      ctx.fillRect(o.x-o.w/2,o.y,o.w,o.h);
+      ctx.fillStyle='#4a8a3a';
+      ctx.fillRect(o.x-o.w/2+4,o.y+4,o.w-8,o.h-8);
+      ctx.fillStyle='#ff5555';
+      ctx.beginPath();ctx.arc(o.x,o.y+10,4,0,Math.PI*2);ctx.fill();
+    }else{
+      // летающий камень
+      ctx.fillStyle='#6a5a4a';
+      ctx.beginPath();
+      ctx.moveTo(o.x-o.w/2,o.y+o.h/2);
+      ctx.lineTo(o.x,o.y);
+      ctx.lineTo(o.x+o.w/2,o.y+o.h/2);
+      ctx.lineTo(o.x,o.y+o.h);
+      ctx.closePath();ctx.fill();
+      ctx.strokeStyle='#3a2e22';ctx.lineWidth=2;ctx.stroke();
+    }
+  }
+}
+
+// ===== ФОН =====
+function drawBG(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#0b1e3a');g.addColorStop(0.6,'#2d5a7a');g.addColorStop(1,'#1e3f4a');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // луна
+  ctx.beginPath();ctx.arc(W*0.8,H*0.15,40,0,Math.PI*2);
+  ctx.fillStyle='#f9e79f';ctx.globalAlpha=0.35;ctx.fill();ctx.globalAlpha=1;
+  // холмы
+  ctx.fillStyle='#1d4d4d';
+  ctx.beginPath();ctx.moveTo(0,player.groundY);
+  for(let x=0;x<=W;x+=20){
+    ctx.lineTo(x,player.groundY-60-Math.sin((x+groundOffset*0.5)*0.008)*30);
+  }
+  ctx.lineTo(W,player.groundY);ctx.closePath();ctx.fill();
+  // земля
+  ctx.fillStyle='#3a2e1e';ctx.fillRect(0,player.groundY,W,H-player.groundY);
+  ctx.fillStyle='#4a7a3a';ctx.fillRect(0,player.groundY,W,16);
+  // текстура
+  ctx.fillStyle='#5a4a2e';
+  for(let x=-80;x<W+80;x+=80){
+    const px=x-(groundOffset%80);
+    ctx.fillRect(px,player.groundY+22,40,5);
+    ctx.fillRect(px+30,player.groundY+42,25,4);
+  }
+}
+
+// ===== ПРЫЖОК =====
+function jump(){
+  if(!gameActive)return;
+  if(player.onGround){
+    player.vy=JUMP;
+    player.onGround=false;
+  }
+}
+
+// ===== ОБНОВЛЕНИЕ =====
+function update(){
+  if(!gameActive)return;
+  const speed=Math.min(15,baseSpeed+score*0.015);
+  score+=0.12;
+  sv.textContent=Math.floor(score);
+
+  // физика
+  if(!player.onGround){
+    player.vy+=GRAVITY;
+    player.y+=player.vy;
+    if(player.y>=player.groundY-player.h){
+      player.y=player.groundY-player.h;
+      player.vy=0;
+      player.onGround=true;
+    }
+  }
+
+  groundOffset+=speed;
+
+  // спавн
+  spawnTimer--;
+  if(spawnTimer<=0){
+    spawnObstacle();
+    spawnTimer=Math.max(35,90-score*0.3)+Math.random()*30;
+  }
+
+  // движение препятствий
+  for(let i=obstacles.length-1;i>=0;i--){
+    obstacles[i].x-=speed;
+    if(obstacles[i].x+obstacles[i].w/2<-50)obstacles.splice(i,1);
+  }
+
+  // коллизии
+  const px=player.x-player.w/2;
+  const py=player.y;
+  for(const o of obstacles){
+    const ox=o.x-o.w/2;
+    if(px<ox+o.w && px+player.w>ox && py<o.y+o.h && py+player.h>o.y){
+      gameOver();return;
+    }
+  }
+}
+
+// ===== ОТРИСОВКА =====
+function draw(){
+  drawBG();
+  drawObstacles();
+  drawPokemon(player.x,player.y+player.h/2,1.0);
+}
+
+// ===== ЦИКЛ =====
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ===== УПРАВЛЕНИЕ =====
+canvas.addEventListener('touchstart',e=>{e.preventDefault();jump();},{passive:false});
+canvas.addEventListener('mousedown',e=>{e.preventDefault();jump();});
+window.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){e.preventDefault();jump();}});
+
+// ===== ВЫБОР ПОКЕМОНА =====
+selector.addEventListener('click',e=>{
+  const btn=e.target.closest('.btn');
+  if(!btn||!gameActive)return;
+  document.querySelectorAll('.btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentPoke=btn.dataset.p;
+});
+
+// ===== GAME OVER =====
+function gameOver(){
+  gameActive=false;
+  gameoverEl.classList.add('show');
+}
+document.getElementById('restart').addEventListener('click',()=>{
+  gameActive=true;
+  score=0;
+  obstacles=[];
+  spawnTimer=60;
+  player.y=player.groundY-player.h;
+  player.vy=0;
+  player.onGround=true;
+  sv.textContent='0';
+  gameoverEl.classList.remove('show');
+});
+
+// СТАРТ
+loop();
+})();
+</script>
+</body>
+</html>
